@@ -1,0 +1,26 @@
+#This configuration JSON file is must for each state.
+{"cleaning":[true, true, false], #level 1, level 2 cleaning & address trim if true = yes
+ "elementOrder":["Sr No","Voter Id","Name","Relation","House No","Age","Gender"], #Stay here always, maintain the order as per image order. 
+ "relations":{"Father":"पिता","Mother":"माता","Husband":"पति","Wife":"पत्नी","Relative":"इतर"}, #Relations will change upon the regional language
+ "genders":["पुरुष","महिला","अन्य"], #This data will change upon regional language
+ "newElements":["Work","Father","Husband","Mother","Wife","Relative","Mobile No","Email Id","Children","Family Size","Religion","Cast","Category","Last Voted To","Possible AAP Voter"], #Stay here always
+ "finalElementOrder":["Sr No","Voter Id","Name","Age","Gender","Father","Mother","Husband","Wife","Relative","House No","Work","Mobile No","Email Id","Children","Family Size","Religion","Cast","Category","Last Voted To","Possible AAP Voter"], #Stay here always
+ "defaultTesseractLang":"hin",
+ "otherTesseractLang":"hin+eng",
+ "pageDimention":"2480x3508",
+ "address":"1700x80+20+170", #Address in header
+ "pageCrop":["2480x250+90+0","2480x297+90+258","2480x297+90+555","2480x297+90+852","2480x297+90+1150","2480x297+90+1448","2480x297+90+1745","2480x297+90+2043","2480x297+90+2339","2480x297+90+2636","2480x297+90+2933","2480x75+90+3315"], #header, 10 rows of 30 records and footer
+ "personCrop":["570x297+0+0","570x297+750+0","570x297+1500+0"],
+ "elementCrop":{"170x40+10+25":"eng","380x50+190+25":"eng","465x57+110+76":"hin","570x57+7+130":"hin","375x50+195+190":"hin","175x60+105+234":"eng","135x60+415+234":"hin"},
+ "firstPage":{"State":"220x75+1405+80","VS":"350x75+910+205", "VS Ward Number":"400x50+1865+1750","Part Number":"250x75+2020+215", "Sub-Part Number":"900x900+260+1170", "LS":"500x75+1275+370"},
+ "firstPageTable":[{"table":[{"485x75+260+2890":"eng","455x75+770+2890":"eng","225x55+1250+2990":"eng","225x55+1510+2990":"eng","200x55+1775+2990":"eng","200x55+2050+2990":"eng"}, #Column Name row
+					    ["485x75+260+3065","455x75+770+3065","225x80+1250+3065","225x80+1510+3065","200x80+1775+3065","200x80+2050+3065"]]}], 
+ "pollingCenter":{"Name":"900x70+600+2450","Address":"900x70+600+2600","City":"400x60+1865+1670","Police Station":"400x60+1865+2060","Tahashil":"400x60+1865+2130","District":"400x60+1870+2195","PO":"400x60+1870+1990","Pin Code":"400x50+1875+2260"},
+ "lastPageFinder":["scanThirdPage","70x70+2050+3315"],
+ "lastPage":[{"table":[{"65x115+230+540":"hin","270x120+325+540":"hin","270x120+630+540":"hin","500x100+935+540":"hin","185x55+1645+600":"eng","165x55+1850+600":"eng","140x55+2040+600":"eng","140x55+2205+600":"eng"}, #Column Name row
+					    ["65x170+230+680","275x170+325+680","280x170+630+680","675x170+935+680","165x170+1665+680","165x170+1850+680","140x170+2040+680","150x170+2205+680"],
+					    ["65x150+230+925","280x150+325+925","280x150+630+925","675x150+935+925","185x150+1645+925","165x150+1850+925","140x150+2040+925","150x150+2205+925"],
+					    ["65x200+230+1420","280x200+325+1420","280x200+630+1420","675x200+935+1420","185x200+1645+1420","165x200+1850+1420","140x200+2040+1420","150x200+2205+1420"],
+					    ["65x65+230+1950","1300x65+325+1950","1300x65+325+1950","1300x65+325+1950","180x65+1645+1950","155x65+1850+1950","140x65+2040+1950","140x65+2205+1950"]]}],
+ "voterCounts":	{"I":"140x140+2210+685", "II":"140x140+2210+900", "III":"140x140+2210+1453"}
+}

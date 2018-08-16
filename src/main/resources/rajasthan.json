@@ -1,0 +1,22 @@
+#This configuration JSON file is must for each state.
+{"cleaning":[false, false, true], #level 1, level 2 cleaning & address trim if true = yes
+ "elementOrder":["Sr No","Voter Id","Name","Relation","House No","Age","Gender"], #Stay here always, maintain the order as per image order. 
+ "relations":{"Father":"पिता","Mother":"माता","Husband":"पति","Wife":"पत्नी","Relative":"इतर"}, #Relations will change upon the regional language
+ "genders":["पुरुष","स्त्री","अन्य"], #This data will change upon regional language
+ "newElements":["Work","Father","Husband","Mother","Wife","Relative","Mobile No","Email Id","Children","Family Size","Religion","Cast","Category","Last Voted To","Possible AAP Voter"], #Stay here always
+ "finalElementOrder":["Sr No","Voter Id","Name","Age","Gender","Father","Mother","Husband","Wife","Relative","House No","Work","Mobile No","Email Id","Children","Family Size","Religion","Cast","Category","Last Voted To","Possible AAP Voter"], #Stay here always
+ "defaultTesseractLang":"hin",
+ "otherTesseractLang":"hin+eng",
+ "pageDimention":"2479x3504",
+ "address":"2300x120+0+130", #Address in header
+ "pageCrop":["2300x250+140+50","2300x300+140+305","2300x300+140+607","2300x300+140+909","2300x300+140+1210","2300x300+140+1512","2300x300+140+1813","2300x300+140+2115","2300x300+140+2416","2300x300+140+2718","2300x300+140+3019","2300x120+150+3340"], #header, 10 rows of 30 records and footer
+ "personCrop":["500x300+0+0","500x300+725+0","500x300+1445+0"],
+ "elementCrop":{"115x50+15+12":"eng","355x60+145+12":"eng","385x55+100+72":"hin","450x55+10+125":"hin","260x50+200+185":"hin","105x55+85+235":"eng","150x55+275+235":"hin"},
+ "firstPage":{"State":"190x75+1510+75","VS":"500x75+1055+205", "LS":"500x65+1030+340", "Part Number":"55x60+2210+210", "Sub-Part Number":"1850x950+270+1015"},
+ "firstPageTable":[{"table":[{"280x130+250+3080":"eng","250x130+565+3080":"eng","250x60+900+3155":"eng","250x60+1255+3155":"eng","250x60+1645+3155":"eng","250x60+2025+3155":"eng"}, #Column Name row
+					    ["250x55+265+3245","250x55+570+3245","250x55+890+3245","250x55+1265+3245","250x55+1645+3245","250x55+2010+3245"]]}], 
+ "pollingCenter":{"Name":"1200x100+245+2540","Address":"1200x100+245+2750","City":"600x65+1715+2080=eng","Police Station":"600x65+1715+2200","Tahashil":"600x65+1715+2270","District":"600x65+1715+2330"},
+ "lastPageFinder":["scanFirstPage","70x70+2050+3315"],
+ "lastPage":[],
+ "voterCounts":	{"I":"250x55+570+3245"}
+}
