@@ -21,7 +21,7 @@ import com.google.gson.JsonSyntaxException;
  */
 public class JsonConfigReader {
 	private LinkedList<Boolean> cleaning;
-	private LinkedList<Object> elementOrder;
+	private LinkedList<String> elementOrder;
 	private LinkedHashMap<String, String> relations = new LinkedHashMap<>();
 	private LinkedList<String> genders;
 	private LinkedList<String> newElements;
@@ -106,11 +106,11 @@ public class JsonConfigReader {
 		this.cleaning = cleaning;
 	}
 
-	public LinkedList<Object> getElementOrder() {
+	public LinkedList<String> getElementOrder() {
 		return elementOrder;
 	}
 
-	public void setElementOrder(LinkedList<Object> elementOrder) {
+	public void setElementOrder(LinkedList<String> elementOrder) {
 		this.elementOrder = elementOrder;
 	}
 

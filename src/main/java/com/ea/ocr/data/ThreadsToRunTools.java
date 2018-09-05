@@ -68,12 +68,6 @@ public class ThreadsToRunTools extends Thread {
 
 				// Convert pdf to high scale png files
 				Pdf2ImageRenderer.convertPdf2png(props.getGsEnvPath(), f.getAbsolutePath(), gsOutDir);
-
-				try {
-					Thread.sleep(5000);
-				} catch (InterruptedException e) {
-					log.error(e.getMessage());
-				}
 			}
 		}
 	}

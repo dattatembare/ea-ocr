@@ -472,10 +472,9 @@ public class GenerateJsonNCsv implements Runnable {
 
 	private LinkedHashMap<File, String> filesList(String cropDirPath, long pageNo, long lastPageNo) {
 		LinkedHashMap<File, String> file2Process = new LinkedHashMap<>();
-
-		File[] images = new File(cropDirPath).listFiles(File::isFile); // pull
-																		// image(.png)
-																		// names
+		// pull image(.png) names
+		File[] images = new File(cropDirPath).listFiles(File::isFile); 
+		
 		if (pageNo > 2 && pageNo <= lastPageNo && images.length > 1) {
 			// 12 page rows
 			LinkedList<String> pageRows = config.getPageCropDimentions();
@@ -486,7 +485,6 @@ public class GenerateJsonNCsv implements Runnable {
 
 			int i = 0;
 			for (String geometry : pageRows) {
-				String cropFilePath = cropDirPath + "/" + i + ".png";
 				if (i > 0 && i < 11) {
 					int j = 0;
 					for (String personGeo : persons) {
@@ -499,6 +497,7 @@ public class GenerateJsonNCsv implements Runnable {
 						j++;
 					}
 				} else {
+					String cropFilePath = cropDirPath + "/" + i + ".png";
 					file2Process.put(new File(cropFilePath), config.getDefaultTesseractLang()); // LANGUAGE_HINDI
 				}
 				i++;

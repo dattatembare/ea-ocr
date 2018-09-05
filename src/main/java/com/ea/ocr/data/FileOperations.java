@@ -3,10 +3,16 @@
  */
 package com.ea.ocr.data;
 
+import java.awt.Rectangle;
 import java.io.File;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.ea.ocr.im.ImageGeometry;
 
 /**
  * @author Datta Tembare
@@ -85,12 +91,86 @@ public class FileOperations {
 			return true;
 		} else {
 			try {
-				log.info("Wait 15 seconds to generate file {}.", file.getAbsolutePath());
-				Thread.sleep(15000);
+				log.info("Wait 10 seconds to generate file {}.", file.getAbsolutePath());
+				Thread.sleep(10000);
 			} catch (InterruptedException e) {
 				log.error(e.getMessage());
 			}
 			return waitIfNotExist(file);
 		}
+	}
+
+	public LinkedList<PDFDetails> fileDetailsList(JsonConfigReader config, String cropDirPath, long pngFilesLength,
+			long lastPageNo, boolean isValidDimention) {
+		LinkedList<PDFDetails> fileDetailsList = new LinkedList<>();
+
+		for (int pageNo = 1; pageNo <= pngFilesLength; pageNo++) {
+			String cleanFileDir = cropDirPath+"/"+pageNo;
+			String cleanFile = cleanFileDir + "/clean-" + pageNo + ".png";
+			
+			PDFDetails page = new PDFDetails();
+			page.setPageNumber(pageNo);
+			page.setLastPage(lastPageNo);
+			page.setTotalPages(pngFilesLength);
+			page.setCleanFile(cleanFile);
+			
+			LinkedList<PageDetails> pageDetails = page.getPageDetails();
+			
+			if (pageNo > 2 && pageNo <= lastPageNo && isValidDimention) {
+				// 12 page rows
+				LinkedList<String> pageRows = config.getPageCropDimentions();
+				// Crop one person details
+				LinkedList<String> persons = config.getPersonCropDimentions();
+				// Split the single person details
+				LinkedHashMap<String, String> personDetails = config.getElementCropDimentions();
+				// Pull elements
+				LinkedList<String> elements = config.getElementOrder();
+
+				int i = 0;
+				for (String geometry : pageRows) {
+					Rectangle row = ImageGeometry.getGeometry(geometry);
+					if (i > 0 && i < 11) {
+						int j = 0;
+						for (String person : persons) {
+							Rectangle personGeo = ImageGeometry.getGeometry(person);
+							int k = 0;
+							for (Map.Entry<String, String> entry : personDetails.entrySet()) {
+								String personDetailsFilePath = cleanFileDir + "/" + i + "-" + j + "-" + k + ".png";
+								Rectangle personDetailGeo = ImageGeometry.getGeometry(entry.getKey());
+								Rectangle cropGro = new Rectangle(row.x + personGeo.x + personDetailGeo.x,
+										row.y + personGeo.y + personDetailGeo.y, personDetailGeo.width,
+										personDetailGeo.height);
+
+								PageDetails file = new PageDetails();
+								file.setGeometry(cropGro);
+								file.setLanguage(entry.getValue());
+								file.setFileName(personDetailsFilePath);
+								file.setElementName(elements.get(k));
+								pageDetails.add(file);
+								k++;
+							}
+							j++;
+						}
+					} else {
+						String cropFilePath = cleanFileDir + "/" + i + ".png";
+
+						PageDetails file = new PageDetails();
+						file.setGeometry(row);
+						file.setLanguage(config.getDefaultTesseractLang());
+						file.setFileName(cropFilePath);
+						if(i==0){
+							file.setElementName("header");
+						}else if(i ==11){
+							file.setElementName("footer");
+						}
+						pageDetails.add(file);
+					}
+					i++;
+				}
+			} 
+			page.setPageDetails(pageDetails);
+			fileDetailsList.add(page);
+		}
+		return fileDetailsList;
 	}
 }

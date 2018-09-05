@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ea.ocr.data.GenerateData;
+import com.ea.ocr.data.GenerateFiles;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -25,6 +26,18 @@ public class EaOcrController {
 	
 	@Autowired
 	GenerateData generateData;
+	@Autowired
+	GenerateFiles generateFiles;
+	
+	@ApiOperation(value = "PDF available for processing")
+	@RequestMapping(value = "/generateJsonNcsv", method = RequestMethod.POST)
+	public String generateJsonNcsv(@RequestParam("pdfFilePath") String pdfFilePath, @RequestParam("outputFilePath") String outputFilePath,
+			@RequestParam("state") String state) {
+		String jsonFile = RESOURCES_PATH+state.toLowerCase()+".json";
+		log.info("Processing PDFs on path {} for {}", pdfFilePath, jsonFile);
+		generateFiles.execute(pdfFilePath, outputFilePath, jsonFile);
+		return "Success!";
+	}
 	
 	@ApiOperation(value = "PDF available for processing")
 	@RequestMapping(value = "/generateJson", method = RequestMethod.POST)

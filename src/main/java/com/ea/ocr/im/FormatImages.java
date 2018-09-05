@@ -4,10 +4,10 @@
 package com.ea.ocr.im;
 
 import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -16,6 +16,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import javax.imageio.ImageIO;
 
 import org.apache.commons.io.FilenameUtils;
 import org.im4java.core.ConvertCmd;
@@ -29,90 +33,67 @@ import org.slf4j.LoggerFactory;
 
 import com.ea.ocr.data.EaOcrProperties;
 import com.ea.ocr.data.JsonConfigReader;
-import com.google.gson.JsonIOException;
-import com.google.gson.JsonSyntaxException;
 
 /**
  * @author Datta Tembare
  *
  */
 
-//@Component
+// @Component
 public class FormatImages {
 	private static final Logger log = LoggerFactory.getLogger(FormatImages.class);
 
 	EaOcrProperties props;
 	ConvertCmd cmd;
-	
+
 	public FormatImages(EaOcrProperties props) {
 		this.props = props;
 		// Create command, Set Env path
 		cmd = new ConvertCmd();
 		cmd.setSearchPath(props.getImEnvPath());
 	}
-	
-	/*public static void main(String[] args) {
-		EaOcrProperties prop = new EaOcrProperties();
-		JsonConfigReader config = null;
-		try {
-			config = new JsonConfigReader("./src/main/resources/mp.json");
-		} catch (JsonSyntaxException | JsonIOException | FileNotFoundException e1) {
-			log.error(e1.getMessage());
-		}
 
-		prop.setImEnvPath("C:/Program Files/ImageMagick-7.0.7-Q16");
-		
-		FormatImages formatImagesObj = new FormatImages(prop);
-
-		// Pull 12 page row dimensions
-		LinkedList<String> pageRows = config.getPageCropDimentions();
-
-		// Crop all voters data to 30 pieces
-		LinkedList<String> persons = config.getPersonCropDimentions();
-
-		// Split the single person details to 6 pieces
-		LinkedHashMap<String, String> personDetails = config.getElementCropDimentions();
-		
-		String cropDirPath = "C:/EA/mp2-out4/test";
-		String cleanFile = cropDirPath+"/clean-3.png";
-		log.info("START");
-		int m = 0;
-		for (String geometry : pageRows) {
-			Rectangle row = ImageGeometry.getGeometry(geometry);
-			if (m > 0 && m < 11) {
-				int j = 0;
-				for (String personGeo : persons) {
-					// String personFilePath = cropDirPath + "/" + m + "-" + j +
-					// ".png";
-					// formatImagesObj.createCrop(cropFilePath, personFilePath,
-					// personGeo);
-					Rectangle person = ImageGeometry.getGeometry(personGeo);
-					int k = 0;
-					for (Map.Entry<String, String> entry : personDetails.entrySet()) {
-						String personDetailsFilePath = cropDirPath + "/" + m + "-" + j + "-" + k + ".png";
-						Rectangle element = ImageGeometry.getGeometry(entry.getKey());
-						int x = row.x + person.x + element.x;
-						int y = row.y + person.y + element.y;
-						Rectangle finalGeo = new Rectangle(x, y, element.width, element.height);
-						if (k == 4) {
-							formatImagesObj.cropNborder(config, cleanFile, personDetailsFilePath, finalGeo,
-									config.getCleaning().get(2));
-						} else {
-							formatImagesObj.cropNborder(config, cleanFile, personDetailsFilePath, finalGeo, true);
-						}
-						k++;
-					}
-					j++;
-				}
-			} else {
-				String cropFilePath = cropDirPath + "/" + m + ".png";
-				formatImagesObj.createCrop(cleanFile, cropFilePath, geometry);
-			}
-			m++;
-		}
-		log.info("START");
-	}*/
-	 
+	/*
+	 * public static void main(String[] args) { EaOcrProperties prop = new
+	 * EaOcrProperties(); JsonConfigReader config = null; try { config = new
+	 * JsonConfigReader("./src/main/resources/mp.json"); } catch
+	 * (JsonSyntaxException | JsonIOException | FileNotFoundException e1) {
+	 * log.error(e1.getMessage()); }
+	 * 
+	 * prop.setImEnvPath("C:/Program Files/ImageMagick-7.0.7-Q16");
+	 * 
+	 * FormatImages formatImagesObj = new FormatImages(prop);
+	 * 
+	 * // Pull 12 page row dimensions LinkedList<String> pageRows =
+	 * config.getPageCropDimentions();
+	 * 
+	 * // Crop all voters data to 30 pieces LinkedList<String> persons =
+	 * config.getPersonCropDimentions();
+	 * 
+	 * // Split the single person details to 6 pieces LinkedHashMap<String,
+	 * String> personDetails = config.getElementCropDimentions();
+	 * 
+	 * String cropDirPath = "C:/EA/mp2-out4/test"; String cleanFile =
+	 * cropDirPath+"/clean-3.png"; log.info("START"); int m = 0; for (String
+	 * geometry : pageRows) { Rectangle row =
+	 * ImageGeometry.getGeometry(geometry); if (m > 0 && m < 11) { int j = 0;
+	 * for (String personGeo : persons) { // String personFilePath = cropDirPath
+	 * + "/" + m + "-" + j + // ".png"; //
+	 * formatImagesObj.createCrop(cropFilePath, personFilePath, // personGeo);
+	 * Rectangle person = ImageGeometry.getGeometry(personGeo); int k = 0; for
+	 * (Map.Entry<String, String> entry : personDetails.entrySet()) { String
+	 * personDetailsFilePath = cropDirPath + "/" + m + "-" + j + "-" + k +
+	 * ".png"; Rectangle element = ImageGeometry.getGeometry(entry.getKey());
+	 * int x = row.x + person.x + element.x; int y = row.y + person.y +
+	 * element.y; Rectangle finalGeo = new Rectangle(x, y, element.width,
+	 * element.height); if (k == 4) { formatImagesObj.cropNborder(config,
+	 * cleanFile, personDetailsFilePath, finalGeo, config.getCleaning().get(2));
+	 * } else { formatImagesObj.cropNborder(config, cleanFile,
+	 * personDetailsFilePath, finalGeo, true); } k++; } j++; } } else { String
+	 * cropFilePath = cropDirPath + "/" + m + ".png";
+	 * formatImagesObj.createCrop(cleanFile, cropFilePath, geometry); } m++; }
+	 * log.info("START"); }
+	 */
 
 	/**
 	 * 
@@ -151,7 +132,7 @@ public class FormatImages {
 
 			// Split the single person details
 			LinkedHashMap<String, String> personDetails = config.getElementCropDimentions();
-			
+
 			List<String> deleteFiles = new ArrayList<>();
 			deleteFiles.add(cleanFile);
 
@@ -187,11 +168,11 @@ public class FormatImages {
 				}
 				i++;
 			}
-			
+
 			log.info("Delete unwanted files");
-			/*for (String deleteFile : deleteFiles) {
-				deleteFile(deleteFile);
-			}*/
+			/*
+			 * for (String deleteFile : deleteFiles) { deleteFile(deleteFile); }
+			 */
 		} else {
 			file2Process.put(new File(cleanFile), config.getDefaultTesseractLang());
 		}
@@ -200,13 +181,96 @@ public class FormatImages {
 		return file2Process;
 	}
 
+	/**
+	 * 
+	 * @param lastPageNo
+	 * @param inputFilepath
+	 * @param cleanFilePath
+	 */
+	public LinkedHashMap<File, String> processPageNew(JsonConfigReader config, File inputFile, String cropDirPath,
+			long lastPageNo) {
+		String inputFilePath = inputFile.getAbsolutePath();
+		log.info("2. START file {} formatting", inputFilePath);
+
+		String cleanFile = cropDirPath + "/clean-" + inputFile.getName();
+
+		// clean and darken text on whole page
+		cleanNdarkenTextOnPage(config, inputFilePath, cleanFile);
+
+		// Image name is page number of pdf
+		long pageNo = Long.parseLong(FilenameUtils.getBaseName(inputFile.getName()));
+
+		// Define pages to crop to rows, this is required because last some
+		// pages has overall numbers
+		// Crop page to rows, then Crop single person's details and crop more to
+		// separate single person details
+
+		LinkedHashMap<File, String> file2Process = new LinkedHashMap<>();
+		File inCleanFile = new File(cleanFile);
+		if (pageNo > 2 && pageNo <= lastPageNo && isValidDimention(config, cleanFile)) {
+
+			// header convert hr-3.png +repage -crop {DIMENSIONS} +repage
+			// +adjoin hr-3-0.png
+			LinkedList<String> pageRows = config.getPageCropDimentions();
+
+			// Crop one person details
+			LinkedList<String> persons = config.getPersonCropDimentions();
+
+			// Split the single person details
+			LinkedHashMap<String, String> personDetails = config.getElementCropDimentions();
+
+			BufferedImage inputImg = null;
+			try {
+				inputImg = ImageIO.read(inCleanFile);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+			ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+			int i = 0;
+			for (String geometry : pageRows) {
+				Rectangle row = ImageGeometry.getGeometry(geometry);
+				if (i > 0 && i < 11) {
+					int j = 0;
+					for (String person : persons) {
+						Rectangle personGeo = ImageGeometry.getGeometry(person);
+						int k = 0;
+						for (Map.Entry<String, String> entry : personDetails.entrySet()) {
+							String personDetailsFilePath = cropDirPath + "/" + i + "-" + j + "-" + k + ".png";
+							Rectangle personDetailGeo = ImageGeometry.getGeometry(entry.getKey());
+							Rectangle cropGro = new Rectangle(row.x + personGeo.x + personDetailGeo.x,
+									row.y + personGeo.y + personDetailGeo.y, personDetailGeo.width,
+									personDetailGeo.height);
+							file2Process.put(new File(personDetailsFilePath), entry.getValue());
+							executor.execute(
+									new CropNborder(props, config, inputImg, k, cropGro, personDetailsFilePath));
+							k++;
+						}
+						j++;
+					}
+				} else {
+					String cropFilePath = cropDirPath + "/" + i + ".png";
+					cropImage(cleanFile, cropFilePath, row);
+					file2Process.put(new File(cropFilePath), config.getDefaultTesseractLang()); // LANGUAGE_HINDI
+				}
+				i++;
+			}
+		} else {
+			file2Process.put(inCleanFile, config.getDefaultTesseractLang());
+		}
+
+		log.info("END file formatting");
+		return file2Process;
+	}
+
 	public boolean isValidDimention(JsonConfigReader config, String cleanFile) {
-		if(identyfyImg(cleanFile).get("dimentions").equals(config.getPageDimention())){
+		if (identyfyImg(cleanFile).get("dimentions").equals(config.getPageDimention())) {
 			return true;
 		}
 		return false;
 	}
-	
+
 	/**
 	 * 1. Set the environment-variable IM4JAVA_TOOLPATH. This variable should
 	 * contain a list of directories to search for your tools separated by your
@@ -233,7 +297,7 @@ public class FormatImages {
 			cmd.run(op);
 		} catch (IOException | InterruptedException | IM4JavaException e) {
 			log.error(e.getMessage());
-		} 
+		}
 	}
 
 	/**
@@ -287,6 +351,42 @@ public class FormatImages {
 		executeCmd(op);
 
 		op = null;
+	}
+
+	public void cropImage(String inputFile, String outputPath, Rectangle cropGeometry) {
+		IMOperation op = new IMOperation();
+		op.addImage();
+		op.crop(cropGeometry.width, cropGeometry.height, cropGeometry.x, cropGeometry.y);
+		// op.addRawArgs("+profile","*");
+		// op.addRawArgs("-quality","90.0");
+		op.addImage();
+
+		ConvertCmd cmd = new ConvertCmd();
+		cmd.setSearchPath("C:/Program Files/ImageMagick-7.0.7-Q16/");
+
+		try {
+			BufferedImage img = ImageIO.read(new File(inputFile));
+			cmd.run(op, img, outputPath);
+		} catch (IOException | InterruptedException | IM4JavaException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	public void cropImage(BufferedImage inputImg, String outputFilePath, Rectangle cropGeometry) {
+		IMOperation op = new IMOperation();
+		op.addImage();
+		op.crop(cropGeometry.width, cropGeometry.height, cropGeometry.x, cropGeometry.y);
+		// op.addRawArgs("+profile","*");
+		// op.addRawArgs("-quality","90.0");
+		op.addImage();
+
+		try {
+			cmd.run(op, inputImg, outputFilePath);
+		} catch (IOException | InterruptedException | IM4JavaException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -350,7 +450,7 @@ public class FormatImages {
 		op.gravity("center");
 		if (trim && config.getCleaning().get(1)) {
 			op.addRawArgs("-resize", "150%%");
-			//op.addRawArgs("-black-threshold", "30%%");
+			// op.addRawArgs("-black-threshold", "30%%");
 		}
 
 		// op.repage();
@@ -361,15 +461,15 @@ public class FormatImages {
 		executeCmd(op);
 		op = null;
 	}
-	
- 	/**
+
+	/**
 	 * 
 	 * @param config
 	 * @param inputFilepath
 	 */
-	public void cropNborder(JsonConfigReader config, String inputFilepath, String outputFilePath, Rectangle cropGeometry,
-			boolean trim) {
-		
+	public void cropNborder(JsonConfigReader config, String inputFilepath, String outputFilePath,
+			Rectangle cropGeometry, boolean trim) {
+
 		IMOperation op = new IMOperation();
 		op.addImage(inputFilepath);
 		op.crop(cropGeometry.width, cropGeometry.height, cropGeometry.x, cropGeometry.y);
@@ -382,7 +482,7 @@ public class FormatImages {
 		op.gravity("center");
 		if (trim && config.getCleaning().get(1)) {
 			op.addRawArgs("-resize", "150%%");
-			//op.addRawArgs("-black-threshold", "30%%");
+			// op.addRawArgs("-black-threshold", "30%%");
 		}
 
 		// op.repage();
@@ -392,6 +492,37 @@ public class FormatImages {
 		op.addImage(outputFilePath);
 		executeCmd(op);
 		op = null;
+	}
+
+	/**
+	 * 
+	 * @param config
+	 * @param inputFilepath
+	 */
+	public void cropNborder(JsonConfigReader config, BufferedImage inputImg, String outputFilePath,
+			Rectangle cropGeometry, boolean trim) {
+		IMOperation op = new IMOperation();
+		op.addImage();
+		op.crop(cropGeometry.width, cropGeometry.height, cropGeometry.x, cropGeometry.y);
+		// op.addRawArgs("+profile","*");
+		// op.addRawArgs("-quality","90.0");
+		if (trim) {
+			op.trim();
+		}
+		op.bordercolor("White");
+		op.border(7, 7);
+		op.gravity("center");
+		if (trim && config.getCleaning().get(1)) {
+			op.addRawArgs("-resize", "150%%");
+			op.addRawArgs("-black-threshold", "30%%");
+		}
+		op.addImage();
+
+		try {
+			cmd.run(op, inputImg, outputFilePath);
+		} catch (IOException | InterruptedException | IM4JavaException e) {
+			log.error("ERROR while processing the file.");
+		}
 	}
 
 	/**
@@ -510,5 +641,5 @@ public class FormatImages {
 		}
 		return isValidInteger;
 	}
-	
+
 }
