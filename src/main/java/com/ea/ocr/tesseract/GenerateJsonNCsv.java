@@ -1,6 +1,3 @@
-/**
- * 
- */
 package com.ea.ocr.tesseract;
 
 import static com.ea.ocr.data.EaOcrConstants.*;
@@ -28,6 +25,9 @@ import com.ea.ocr.data.EaOcrProperties;
 import com.ea.ocr.data.ExtractTableData;
 import com.ea.ocr.data.FileOperations;
 import com.ea.ocr.data.JsonConfigReader;
+import com.ea.ocr.data.PDFDetails;
+import com.ea.ocr.data.PageDetails;
+import com.ea.ocr.gs.Pdf2ImageRenderer;
 import com.ea.ocr.im.CropPage;
 import com.ea.ocr.im.FormatImages;
 import com.ea.ocr.im.ImageGeometry;
@@ -45,23 +45,24 @@ public class GenerateJsonNCsv implements Runnable {
 	private JsonConfigReader config;
 	private ReadImageText readImageTextObj;
 	private File pdfName;
+	private File dirName;
 	private String outputFilePath;
-	private String dirName;
 	private long srNo;
 
-	public GenerateJsonNCsv(EaOcrProperties props, JsonConfigReader config, File pdfName, String outputFilePath,
-			String dirName) {
+	public GenerateJsonNCsv(EaOcrProperties props, JsonConfigReader config, File pdfName, File dirName, String outputFilePath) {
 		this.props = props;
 		this.config = config;
 		this.pdfName = pdfName;
-		this.outputFilePath = outputFilePath;
 		this.dirName = dirName;
+		this.outputFilePath = outputFilePath;
 		this.readImageTextObj = new ReadImageText(props);
 	}
 
 	public void run() {
 		try {
-			generateJsonNcsvFiles();
+			//generateJsonNcsvFiles();
+			//String pdfFilePath, String outputFilePath, String jsonFile
+			execute();
 		} catch (Exception err) {
 			err.printStackTrace();
 		}
@@ -548,6 +549,295 @@ public class GenerateJsonNCsv implements Runnable {
 			log.info("Teseeract didn't pull correct text for file {}", file);
 		}
 		return lastPageNo;
+	}
+	
+	public void execute() {
+		FormatImages formatImagesObj = new FormatImages(props);
+		ReadImageText readImageTextObj = new ReadImageText(props);
+		FileOperations fileOperations = new FileOperations();
+
+		// Create JSON and CSV directories
+		//FileOperations.createDirWithReadWritePermissions(outputFilePath + JSON_DIR);
+		//FileOperations.createDirWithReadWritePermissions(outputFilePath + CSV_DIR);
+		//JsonConfigReader config = configObj(jsonFile);
+
+		/*File[] directories = fileOperations.directoryList(new File(pdfFilePath));
+		for (File d : directories) {
+			File[] pdfFiles = new File(d.getAbsolutePath()).listFiles(File::isFile);
+			for (File f : pdfFiles) {*/
+				srNo = 1;
+				// Create output directory for GhostSCript
+				String gsOutDir = outputFilePath + GS_DIR + FilenameUtils.getBaseName(dirName.getAbsolutePath()) + "/"
+						+ FilenameUtils.getBaseName(pdfName.getAbsolutePath());
+				log.info("1. Directory for GhosScript output {}", gsOutDir);
+
+				// Create directory for GhosScript output
+				FileOperations.createDirWithReadWritePermissions(gsOutDir);
+
+				// Convert pdf to high scale png files
+				Pdf2ImageRenderer.convertPdf2png(props.getGsEnvPath(), pdfName.getAbsolutePath(), gsOutDir);
+
+				// Pull png files to process
+				Map<String, Long> voterCountsMap = null;
+				long lastPageNo = 0;
+				long pngFilesLength = fileOperations.filesLength(gsOutDir);
+				
+				String cropDirPath = outputFilePath + IM_DIR + FilenameUtils.getBaseName(dirName.getName()) + "/"
+						+ FilenameUtils.getBaseName(pdfName.getName());
+
+				if (config.getLastPageFinder().get(0).equals("scanFirstPage")) {
+					String inputFilepath = cropDirPath + "/1/clean-1.png";
+					voterCountsMap = voterCounts(config, new File(inputFilepath));
+					lastPageNo = pngFilesLength;
+				} else if (config.getLastPageFinder().get(0).equals("scanThirdPage")) {
+					String inputFilepath = cropDirPath + "/" + pngFilesLength + "/clean-" + pngFilesLength +".png";
+					voterCountsMap = voterCounts(config, new File(inputFilepath));
+					inputFilepath = cropDirPath + "/3/clean-3.png";
+					lastPageNo = (long) findLastPage(inputFilepath, config.getLastPageFinder().get(1));
+				} else if (config.getLastPageFinder().get(0).equals("scanLastPage")) {
+					String inputFilepath = cropDirPath + "/" + pngFilesLength + "/clean-" + pngFilesLength +".png";
+					voterCountsMap = voterCounts(config, new File(inputFilepath));
+					// double records = voterCountsMap.get("I");
+					// lastPageNo = (long) Math.ceil(records / 30) + 2;
+					lastPageNo = pngFilesLength - 5; // This is just for MP, if
+														// new State has
+														// lastpage scan then it
+														// need to be
+														// configured.
+				}
+
+				// Consider length-5 if tesseract didn't full the correct text
+				if (lastPageNo == 0) {
+					lastPageNo = pngFilesLength - 5;
+				}
+				
+				log.info("GS extracted files {}, last page number {}", pngFilesLength, lastPageNo);
+				
+				
+				// Pull fileDetails for all PDF pages
+				boolean isValidDimention = formatImagesObj.isValidDimention(config, gsOutDir + "/3.png");
+				LinkedList<PDFDetails> fileDetails = fileOperations.fileDetailsList(config, cropDirPath, pngFilesLength, lastPageNo, isValidDimention);
+
+				Map<String, String> firstNLastPage = new HashMap<>();
+				StringBuffer fileContent = new StringBuffer();
+				TextReader textReader = new TextReader(props);
+				fileContent.append("[");
+				for (PDFDetails page : fileDetails) {
+					// Read text through Tesseract
+					log.info("3. Read text for file {}", page.getCleanFile());
+					
+					long pageNo = page.getPageNumber();
+					fileContent.append("{\"pageNumber\":\"" + pageNo + "\",");
+					if (pageNo > 2 && pageNo <= lastPageNo && isValidDimention) {
+						// Process through Imagemagick
+						String cleanFileDir = cropDirPath + "/" + pageNo;
+						String cleanFile = cleanFileDir+"/clean-"+ pageNo+".png";
+						new CropPage(props, config, cleanFileDir, cleanFile).cropPage();
+						//Process images in parallel 
+						textReader.processBatch(page);
+						// Use page obj to build StringBuffer
+						buildPageString(config, page, fileContent, voterCountsMap);
+						if (pageNo == pngFilesLength) {
+							fileContent.append("{}");
+						}
+					} else {
+						File fileName = new File(page.getCleanFile());
+						String text = readImageTextObj.ocrText(fileName, config.getDefaultTesseractLang());
+
+						// Build the JSON file
+						if (pageNo == 1) {
+							fileContent.append("\"details\":\"" + removeSpecialChars(text) + "\"},");
+							if (config.getFirstPage().size() > 0) {
+								String firstPage = firstPage(config, fileName);
+								firstNLastPage.put("firstPage", firstPage);
+								fileContent.append(firstPage);
+							}
+						} else if (pageNo == 2) {
+							fileContent.append(detailsStr(text));
+						} else if (pageNo == pngFilesLength) { // last page
+							fileContent.append(detailsStr(text));
+							if (config.getLastPageDimentions().size() > 0) {
+								String lastPage = lastPage(config, fileName);
+								firstNLastPage.put("lastPage", lastPage);
+								fileContent.append(lastPage);
+							}
+						} else {
+							fileContent.append(detailsStr(text));
+						}
+					}
+				}
+				fileContent.append("]");
+
+				// Validate JSON String, Generate JSON and CSV files
+				log.info("********** JSON File content ************ {}", fileContent.toString());
+				log.info("Validate JSON string");
+				String jsonString = validateJson(fileContent.toString());
+				gnerateJsonNcsvFiles(outputFilePath, config, pdfName, firstNLastPage, jsonString);
+
+				// Delete Files
+				try {
+					FileUtils.deleteDirectory(new File(gsOutDir));
+					FileUtils.deleteDirectory(new File(cropDirPath));
+				} catch (IOException e) {
+					log.error(e.getMessage());
+				}
+			//}
+		//}
+
+	}
+	
+	private void buildPageString(JsonConfigReader config, PDFDetails pdf, StringBuffer fileContent,	Map<String, Long> voterCountsMap) {
+		LinkedHashMap<String, String> personDetails = null;
+		LinkedList<PageDetails> pageFiles = pdf.getPageDetails();
+		long lastPageNo = pdf.getLastPage();
+		long countFromLastPage = voterCountsMap.get("I");
+		long rangeFrom = ((lastPageNo - 3) * 30) - 30;
+		long rangeTo = ((lastPageNo - 3) * 30) + 30;
+
+		if (pageFiles.size() > 0) {
+			int j = 0;
+			for (PageDetails page : pageFiles) {
+				String fileName = page.getFileName();
+				String elementName = page.getElementName();
+				String text = page.getFileText();
+
+				if (elementName.equals("header")) {
+					fileContent.append("\"" + elementName + "\":\"" + removeSpecialChars(text) + "\",");
+					fileContent.append(
+							"\"address\":\"" + removeSpecialChars(getAddress(config, new File(fileName))) + "\",");
+					fileContent.append("\"content\":[");
+				} else if (elementName.equals("footer")) {
+					fileContent.append("{}],");
+					fileContent.append("\"" + elementName + "\":\"" + removeSpecialChars(text) + "\"},");
+					/*
+					 * if (i == pngFilesLength) { fileContent.append("{}"); }
+					 */
+				} else {
+					boolean lastEleFlag = pageFiles.size() == j + 1 ? true : false;
+					personDetails = buildJson(config, fileName, text, personDetails);
+
+					if (personDetails != null && personDetails.size() == config.getElementOrder().size()) {
+						fileContent.append("{");
+						long sn = 0;
+						for (Map.Entry<String, String> person : personDetails.entrySet()) {
+							if ("Sr No".equals(person.getKey())) {
+								sn = checkNCorrectSrNo(person.getValue(), voterCountsMap);
+								if (sn != 0 && countFromLastPage != 0 && countFromLastPage > rangeFrom
+										&& countFromLastPage < rangeTo) {
+									if (sn == countFromLastPage) {
+										pdf.setLastPage(pdf.getPageNumber());
+										// lastPageNo = i;
+									} else if (pdf.getPageNumber() == lastPageNo && lastEleFlag
+											&& sn < countFromLastPage) {
+										// lastPageNo = i + 1;
+										pdf.setLastPage(pdf.getPageNumber() + 1);
+										// TODO if lastpage size increased by
+										// one then need to crop page
+									}
+								}
+								fileContent.append("\"" + person.getKey() + "\":\"" + sn + "\",");
+							} else {
+								fileContent.append("\"" + person.getKey() + "\":\"" + person.getValue() + "\",");
+							}
+						}
+						int n = 1;
+						if (config.getNewElements() != null && config.getNewElements().size() > 0) {
+							for (String newEle : config.getNewElements()) {
+								if (!personDetails.keySet().contains(newEle)) {
+									fileContent.append("\"" + newEle + "\":\"null\"");
+									if (config.getNewElements().size() != n) {
+										fileContent.append(",");
+									}
+								}
+								n++;
+							}
+						} else {
+							fileContent.append("null");
+						}
+						fileContent.append("},");
+					}
+				}
+				j++;
+			}
+		} else {
+			ReadImageText readImageTextObj = new ReadImageText(props);
+			String text = readImageTextObj.ocrText(new File(pdf.getCleanFile()), config.getDefaultTesseractLang());
+			fileContent.append("\"details\":\"" + removeSpecialChars(text) + "\"},");
+		}
+	}
+
+	/**
+	 * @param outputFilePath
+	 * @param config
+	 * @param f
+	 * @param firstNLastPage
+	 * @param jsonString
+	 */
+	private void gnerateJsonNcsvFiles(String outputFilePath, JsonConfigReader config, File f,
+			Map<String, String> firstNLastPage, String jsonString) {
+		File jFile = new File(outputFilePath + JSON_DIR + FilenameUtils.getBaseName(f.getName()) + ".json");
+		File csvFile = new File(outputFilePath + CSV_DIR + FilenameUtils.getBaseName(f.getName()) + ".csv");
+		File jbFile = new File(outputFilePath + JSON_DIR + FilenameUtils.getBaseName(f.getName()) + "-brief.json");
+		File csvbFile = new File(outputFilePath + CSV_DIR + FilenameUtils.getBaseName(f.getName()) + "-brief.csv");
+
+		EaJsonToCsvFileWriter csvWriter = new EaJsonToCsvFileWriter();
+
+		try {
+			log.info("Write JSON file.");
+			FileUtils.writeStringToFile(jFile, jsonString, "UTF-8");
+
+			log.info("Write JSON to CSV file.");
+			csvWriter.writeCsv(config, jsonString, csvFile);
+
+			String briefJsonString = briefJsonStr(firstNLastPage);
+			log.info("Write Brief JSON file.");
+			FileUtils.writeStringToFile(jbFile, briefJsonString, "UTF-8");
+
+			log.info("Write Brief CSV file.");
+			csvWriter.writeCsv(config, briefJsonString, csvbFile);
+		} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException
+				| JSONException | IOException e) {
+			log.error(e.getMessage());
+		}
+	}
+	
+	/**
+	 * 
+	 * @param config
+	 * @param fileName
+	 * @param text
+	 * @param map
+	 * @return
+	 */
+	private LinkedHashMap<String, String> buildJson(JsonConfigReader config, String fileName, String text,
+			LinkedHashMap<String, String> map) {
+		if (fileName.contains("-0.png")) {
+			map = new LinkedHashMap<String, String>();
+			map.put(config.getElementOrder().get(0).toString(), text);
+		} else if (fileName.contains("-1.png")) {
+			map.put(config.getElementOrder().get(1).toString(), formatText(text));
+		} else if (fileName.contains("-2.png")) {
+			map.put(config.getElementOrder().get(2).toString(), formatText(text));
+		} else if (fileName.contains("-3.png")) {
+			map.put(getRelation(config, text), getRelationVal(text));
+		} else if (fileName.contains("-4.png")) {
+			map.put(config.getElementOrder().get(4).toString(), formatText(text));
+		} else if (fileName.contains("-5.png")) {
+			map.put(config.getElementOrder().get(5).toString(), age(text));
+		} else if (fileName.contains("-6.png")) {
+			map.put(config.getElementOrder().get(6).toString(), getGender(config, formatText(text)));
+			int cnt = 0;
+			for (String s : map.values()) {
+				if (s.equals(NO_TEXT)) {
+					cnt++;
+				}
+			}
+			if (cnt == config.getElementOrder().size()) {
+				map = null;
+			}
+		}
+
+		return map;
 	}
 
 }

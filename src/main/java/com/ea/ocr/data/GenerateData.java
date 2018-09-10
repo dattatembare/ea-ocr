@@ -1,4 +1,10 @@
+/**
+ * 
+ */
 package com.ea.ocr.data;
+
+import static com.ea.ocr.data.EaOcrConstants.*;
+import static com.ea.ocr.data.StringOperations.*;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -6,8 +12,10 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.LongStream;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -18,16 +26,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.ea.ocr.gs.Pdf2ImageRenderer;
+import com.ea.ocr.im.CropPage;
 import com.ea.ocr.im.FormatImages;
 import com.ea.ocr.im.ImageGeometry;
 import com.ea.ocr.tesseract.ReadImageText;
+import com.ea.ocr.tesseract.TextReader;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
-
-import static com.ea.ocr.data.EaOcrConstants.*;
-import static com.ea.ocr.data.StringOperations.*;
 
 /**
  * @author Datta Tembare
@@ -42,20 +49,13 @@ public class GenerateData {
 	EaOcrProperties props;
 
 	private long srNo;
-
-	/*public static void main(String[] args) {
-		String jStr = "600x65+1715+2080";
-		String[] arr = jStr.split("=");
-		String language = arr.length > 1 ? arr[1] : "hin";
-		System.out.println(language);
-	}*/
-
+	
 	/**
 	 * 
 	 * @param pdfFilePath
 	 * @param jsonFile
 	 */
-	public void generateJsonFile(String pdfFilePath, String outputFilePath, String jsonFile) {
+	public void execute(String pdfFilePath, String outputFilePath, String jsonFile) {
 		log.info("Process PDF {}", pdfFilePath);
 		FormatImages formatImagesObj = new FormatImages(props);
 		ReadImageText readImageTextObj = new ReadImageText(props);
@@ -64,12 +64,7 @@ public class GenerateData {
 		// Create JSON and CSV directories
 		FileOperations.createDirWithReadWritePermissions(outputFilePath + JSON_DIR);
 		FileOperations.createDirWithReadWritePermissions(outputFilePath + CSV_DIR);
-		JsonConfigReader config = null;
-		try {
-			config = new JsonConfigReader(jsonFile);
-		} catch (JsonSyntaxException | JsonIOException | FileNotFoundException e1) {
-			log.error(e1.getMessage());
-		}
+		JsonConfigReader config = configObj(jsonFile);
 
 		File[] directories = fileOperations.directoryList(new File(pdfFilePath));
 		for (File d : directories) {
@@ -91,201 +86,225 @@ public class GenerateData {
 				Map<String, Long> voterCountsMap = null;
 				long lastPageNo = 0;
 				long pngFilesLength = fileOperations.filesLength(gsOutDir);
+				
+				// Generate clean files
+				log.info("2. Crop page for voter details");
+				boolean isValidDimention = formatImagesObj.isValidDimention(config, gsOutDir + "/3.png");
+				String cropDirPath = outputFilePath + IM_DIR + FilenameUtils.getBaseName(d.getName()) + "/"
+						+ FilenameUtils.getBaseName(f.getName());
+				LongStream stream = LongStream.of(1, 2, 3, 4, 5, pngFilesLength);
+				stream.parallel()
+					.forEach(i -> generateCleanFiles(config, gsOutDir, cropDirPath, i, 5, isValidDimention));
 
 				if (config.getLastPageFinder().get(0).equals("scanFirstPage")) {
-					String inputFilepath = gsOutDir + "/1.png";
+					String inputFilepath = cropDirPath + "/1/clean-1.png";
 					voterCountsMap = voterCounts(config, new File(inputFilepath));
 					lastPageNo = pngFilesLength;
 				} else if (config.getLastPageFinder().get(0).equals("scanThirdPage")) {
-					String inputFilepath = gsOutDir + "/" + pngFilesLength + ".png";
+					String inputFilepath = cropDirPath + "/" + pngFilesLength + "/clean-" + pngFilesLength +".png";
 					voterCountsMap = voterCounts(config, new File(inputFilepath));
-					inputFilepath = gsOutDir + "/3.png";
+					inputFilepath = cropDirPath + "/3/clean-3.png";
 					lastPageNo = (long) findLastPage(inputFilepath, config.getLastPageFinder().get(1));
 				} else if (config.getLastPageFinder().get(0).equals("scanLastPage")) {
-					String inputFilepath = gsOutDir + "/" + pngFilesLength + ".png";
+					String inputFilepath = cropDirPath + "/" + pngFilesLength + "/clean-" + pngFilesLength +".png";
 					voterCountsMap = voterCounts(config, new File(inputFilepath));
-					//double records = voterCountsMap.get("I");
-					//lastPageNo = (long) Math.ceil(records / 30) + 2;
-					lastPageNo = pngFilesLength - 5; //This is just for MP, if new State has lastpage scan then it need to be configured.
+					// double records = voterCountsMap.get("I");
+					// lastPageNo = (long) Math.ceil(records / 30) + 2;
+					lastPageNo = pngFilesLength - 5; // This is just for MP, if
+														// new State has
+														// lastpage scan then it
+														// need to be
+														// configured.
 				}
-				
+
 				// Consider length-5 if tesseract didn't full the correct text
 				if (lastPageNo == 0) {
 					lastPageNo = pngFilesLength - 5;
 				}
-				long countFromLastPage = voterCountsMap.get("I");
-				long rangeFrom = ((lastPageNo - 3) * 30) - 30;
-				long rangeTo = ((lastPageNo - 3) * 30) + 30;
 				
 				log.info("GS extracted files {}, last page number {}", pngFilesLength, lastPageNo);
+				long lpn = lastPageNo;
+				LongStream.range(6, pngFilesLength).parallel()
+						.forEach(i -> generateCleanFiles(config, gsOutDir, cropDirPath, i, lpn, isValidDimention));
+				log.info("generateCleanFiles operation performed successfully!");
+				
+				// Pull fileDetails for all PDF pages
+				LinkedList<PDFDetails> fileDetails = fileOperations.fileDetailsList(config, cropDirPath, pngFilesLength, lastPageNo, isValidDimention);
 
 				Map<String, String> firstNLastPage = new HashMap<>();
-
 				StringBuffer fileContent = new StringBuffer();
+				TextReader textReader = new TextReader(props);
 				fileContent.append("[");
-
-				// Using regular for loop to process files in ascending order,
-				// for each loop returns like 1 10 11 ... 2 3 4 like this
-				for (int i = 1; i <= pngFilesLength; i++) {
-					// Create output directory for ImageMagick
-					String cleanFilePath = outputFilePath + IM_DIR + FilenameUtils.getBaseName(d.getName()) + "/"
-							+ FilenameUtils.getBaseName(f.getName()) + "/" + i;
-					FileOperations.createDirWithReadWritePermissions(cleanFilePath);
-
-					// Process images using Imagemagick
-					LinkedHashMap<File, String> processedImages = formatImagesObj.processPage(config,
-							new File(gsOutDir + "/" + i + ".png"), cleanFilePath, lastPageNo);
-					log.info("3. Read image using teserract");
-					fileContent.append("{\"pageNumber\":\"" + i + "\",");
-
-					int j = 1;
-					LinkedHashMap<String, String> personDetails = null;
-					for (Map.Entry<File, String> entry : processedImages.entrySet()) {
-
-						// Read text using Tesseract OCR
-						String fileName = entry.getKey().getAbsolutePath();
-						// log.info("Tesseract input file {}", fileName);
-
-						String text = readImageTextObj.ocrText(entry.getKey(), entry.getValue()).trim();
-						// log.info("Text retuned by Tesseract {} ", text);
-
-						if (text.isEmpty()) {
-							formatImagesObj.addBlackThreshold(fileName);
-							text = readImageTextObj.ocrText(entry.getKey(), entry.getValue()).trim();
-							if (text.isEmpty()) {
-								log.info("Tesseract didn't return text for file {}", fileName);
-								text = NO_TEXT;
-							}
+				for (PDFDetails page : fileDetails) {
+					// Read text through Tesseract
+					log.info("3. Read text for file {}", page.getCleanFile());
+					
+					long pageNo = page.getPageNumber();
+					fileContent.append("{\"pageNumber\":\"" + pageNo + "\",");
+					if (pageNo > 2 && pageNo <= lastPageNo && isValidDimention) {
+						// Process through Imagemagick
+						String cleanFileDir = cropDirPath + "/" + pageNo;
+						String cleanFile = cleanFileDir+"/clean-"+ pageNo+".png";
+						new CropPage(props, config, cleanFileDir, cleanFile).cropPage();
+						//Process images in parallel 
+						textReader.processBatch(page);
+						// Use page obj to build StringBuffer
+						buildPageString(config, page, fileContent, voterCountsMap);
+						if (pageNo == pngFilesLength) {
+							fileContent.append("{}");
 						}
+					} else {
+						File fileName = new File(page.getCleanFile());
+						String text = readImageTextObj.ocrText(fileName, config.getDefaultTesseractLang());
 
 						// Build the JSON file
-						if (i == 1) {
+						if (pageNo == 1) {
 							fileContent.append("\"details\":\"" + removeSpecialChars(text) + "\"},");
 							if (config.getFirstPage().size() > 0) {
-								String firstPage = firstPage(config, entry.getKey());
+								String firstPage = firstPage(config, fileName);
 								firstNLastPage.put("firstPage", firstPage);
 								fileContent.append(firstPage);
 							}
-						} else if (i == 2) {
+						} else if (pageNo == 2) {
 							fileContent.append(detailsStr(text));
-						} else if (i > 2 && i <= lastPageNo) {
-							if (fileName.contains("\\clean-") || fileName.contains("/clean-")) {
-								fileContent.append("\"details\":\"" + removeSpecialChars(text) + "\"},");
-							}else if (fileName.contains("\\0.png") || fileName.contains("/0.png")) {
-								fileContent.append("\"header\":\"" + removeSpecialChars(text) + "\",");
-								fileContent.append("\"address\":\""
-										+ removeSpecialChars(getAddress(config, entry.getKey())) + "\",");
-								fileContent.append("\"content\":[");
-							} else if (fileName.contains("\\11.png") || fileName.contains("/11.png")) {
-								fileContent.append("{}],");
-								fileContent.append("\"footer\":\"" + removeSpecialChars(text) + "\"},");
-								if (i == pngFilesLength) {
-									fileContent.append("{}");
-								}
-							} else {
-								boolean lastEleFlag = processedImages.size() == j + 1 ? true : false;
-								personDetails = buildJson(config, fileName, text, personDetails);
-
-								if (personDetails != null && personDetails.size() == config.getElementOrder().size()) {
-									fileContent.append("{");
-									long sn = 0;
-									for (Map.Entry<String, String> person : personDetails.entrySet()) {
-										if ("Sr No".equals(person.getKey())) {
-											sn = checkNCorrectSrNo(person.getValue(), voterCountsMap);
-											if (sn != 0 && countFromLastPage != 0 && countFromLastPage > rangeFrom && countFromLastPage < rangeTo) {
-												if(sn == countFromLastPage){
-													lastPageNo = i;
-												}else if(i == lastPageNo && lastEleFlag && sn < countFromLastPage) {
-													lastPageNo = i + 1;
-												}
-											}
-											fileContent.append("\"" + person.getKey() + "\":\"" + sn + "\",");
-										} else {
-											fileContent.append(
-													"\"" + person.getKey() + "\":\"" + person.getValue() + "\",");
-										}
-									}
-									int n = 1;
-									if (config.getNewElements() != null && config.getNewElements().size() > 0) {
-										for (String newEle : config.getNewElements()) {
-											if (!personDetails.keySet().contains(newEle)) {
-												fileContent.append("\"" + newEle + "\":\"null\"");
-												if (config.getNewElements().size() != n) {
-													fileContent.append(",");
-												}
-											}
-											n++;
-										}
-									} else {
-										fileContent.append("null");
-									}
-									fileContent.append("},");
-								}
-							}
-						} else if (i == pngFilesLength) { // last page
+						} else if (pageNo == pngFilesLength) { // last page
 							fileContent.append(detailsStr(text));
 							if (config.getLastPageDimentions().size() > 0) {
-								String lastPage = lastPage(config, entry.getKey());
+								String lastPage = lastPage(config, fileName);
 								firstNLastPage.put("lastPage", lastPage);
 								fileContent.append(lastPage);
 							}
 						} else {
 							fileContent.append(detailsStr(text));
 						}
-						j++;
-					}
-					// log.info("Page Number: {} content {}", i,
-					// fileContent.toString());
-					
-					try {
-						FileUtils.deleteDirectory(new File(cleanFilePath));
-					} catch (IOException e) {
-						log.error(e.getMessage());
 					}
 				}
-
 				fileContent.append("]");
+
+				// Validate JSON String, Generate JSON and CSV files
 				log.info("********** JSON File content ************ {}", fileContent.toString());
 				log.info("Validate JSON string");
 				String jsonString = validateJson(fileContent.toString());
+				gnerateJsonNcsvFiles(outputFilePath, config, f, firstNLastPage, jsonString);
 
-				File jFile = new File(outputFilePath + JSON_DIR + FilenameUtils.getBaseName(f.getName()) + ".json");
-				File csvFile = new File(outputFilePath + CSV_DIR + FilenameUtils.getBaseName(f.getName()) + ".csv");
-				File jbFile = new File(
-						outputFilePath + JSON_DIR + FilenameUtils.getBaseName(f.getName()) + "-brief.json");
-				File csvbFile = new File(
-						outputFilePath + CSV_DIR + FilenameUtils.getBaseName(f.getName()) + "-brief.csv");
-
-				EaJsonToCsvFileWriter csvWriter = new EaJsonToCsvFileWriter();
-
-				try {
-					log.info("Write JSON file.");
-					FileUtils.writeStringToFile(jFile, jsonString, "UTF-8");
-
-					log.info("Write JSON to CSV file.");
-					csvWriter.writeCsv(config, jsonString, csvFile);
-
-					String briefJsonString = briefJsonStr(firstNLastPage);
-					log.info("Write Brief JSON file.");
-					FileUtils.writeStringToFile(jbFile, briefJsonString, "UTF-8");
-
-					log.info("Write Brief CSV file.");
-					csvWriter.writeCsv(config, briefJsonString, csvbFile);
-				} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException
-						| JSONException | IOException e) {
-					log.error(e.getMessage());
-				}
-
+				// Delete Files
 				try {
 					FileUtils.deleteDirectory(new File(gsOutDir));
+					FileUtils.deleteDirectory(new File(cropDirPath));
 				} catch (IOException e) {
 					log.error(e.getMessage());
-				} 
+				}
 			}
 		}
 
 	}
 
+	private void buildPageString(JsonConfigReader config, PDFDetails pdf, StringBuffer fileContent,	Map<String, Long> voterCountsMap) {
+		LinkedHashMap<String, String> personDetails = null;
+		LinkedList<PageDetails> pageFiles = pdf.getPageDetails();
+		long lastPageNo = pdf.getLastPage();
+		long countFromLastPage = voterCountsMap.get("I");
+		long rangeFrom = ((lastPageNo - 3) * 30) - 30;
+		long rangeTo = ((lastPageNo - 3) * 30) + 30;
+
+		if (pageFiles.size() > 0) {
+			int j = 0;
+			for (PageDetails page : pageFiles) {
+				String fileName = page.getFileName();
+				String elementName = page.getElementName();
+				String text = page.getFileText();
+
+				if (elementName.equals("header")) {
+					fileContent.append("\"" + elementName + "\":\"" + removeSpecialChars(text) + "\",");
+					fileContent.append(
+							"\"address\":\"" + removeSpecialChars(getAddress(config, new File(fileName))) + "\",");
+					fileContent.append("\"content\":[");
+				} else if (elementName.equals("footer")) {
+					fileContent.append("{}],");
+					fileContent.append("\"" + elementName + "\":\"" + removeSpecialChars(text) + "\"},");
+					/*
+					 * if (i == pngFilesLength) { fileContent.append("{}"); }
+					 */
+				} else {
+					boolean lastEleFlag = pageFiles.size() == j + 1 ? true : false;
+					personDetails = buildJson(config, fileName, text, personDetails);
+
+					if (personDetails != null && personDetails.size() == config.getElementOrder().size()) {
+						fileContent.append("{");
+						long sn = 0;
+						for (Map.Entry<String, String> person : personDetails.entrySet()) {
+							if ("Sr No".equals(person.getKey())) {
+								sn = checkNCorrectSrNo(person.getValue(), voterCountsMap);
+								if (sn != 0 && countFromLastPage != 0 && countFromLastPage > rangeFrom
+										&& countFromLastPage < rangeTo) {
+									if (sn == countFromLastPage) {
+										pdf.setLastPage(pdf.getPageNumber());
+										// lastPageNo = i;
+									} else if (pdf.getPageNumber() == lastPageNo && lastEleFlag
+											&& sn < countFromLastPage) {
+										// lastPageNo = i + 1;
+										pdf.setLastPage(pdf.getPageNumber() + 1);
+										// TODO if lastpage size increased by
+										// one then need to crop page
+									}
+								}
+								fileContent.append("\"" + person.getKey() + "\":\"" + sn + "\",");
+							} else {
+								fileContent.append("\"" + person.getKey() + "\":\"" + person.getValue() + "\",");
+							}
+						}
+						int n = 1;
+						if (config.getNewElements() != null && config.getNewElements().size() > 0) {
+							for (String newEle : config.getNewElements()) {
+								if (!personDetails.keySet().contains(newEle)) {
+									fileContent.append("\"" + newEle + "\":\"null\"");
+									if (config.getNewElements().size() != n) {
+										fileContent.append(",");
+									}
+								}
+								n++;
+							}
+						} else {
+							fileContent.append("null");
+						}
+						fileContent.append("},");
+					}
+				}
+				j++;
+			}
+		} else {
+			ReadImageText readImageTextObj = new ReadImageText(props);
+			String text = readImageTextObj.ocrText(new File(pdf.getCleanFile()), config.getDefaultTesseractLang());
+			fileContent.append("\"details\":\"" + removeSpecialChars(text) + "\"},");
+		}
+	}
+
+	/**
+	 * @param jsonFile
+	 * @return
+	 */
+	private JsonConfigReader configObj(String jsonFile) {
+		JsonConfigReader config = null;
+		try {
+			config = new JsonConfigReader(jsonFile);
+		} catch (JsonSyntaxException | JsonIOException | FileNotFoundException e1) {
+			log.error(e1.getMessage());
+		}
+		return config;
+	}
+
+	private void generateCleanFiles(JsonConfigReader config, String gsOutDir, String cleanFileDir, long pageNo, long lastPageNo, boolean isValidDimention) {
+		cleanFileDir = cleanFileDir + "/" + pageNo;
+		FileOperations.createDirWithReadWritePermissions(cleanFileDir);
+
+		FormatImages formatImagesObj = new FormatImages(props);
+		String inputFilepath = gsOutDir + "/" + pageNo + ".png";
+		String outputFilePath = cleanFileDir + "/clean-" + pageNo + ".png";
+
+		formatImagesObj.cleanNdarkenTextOnPage(config, inputFilepath, outputFilePath);
+	}
+	
+	
 	/**
 	 * 
 	 * @param config
@@ -307,6 +326,150 @@ public class GenerateData {
 		return voterCounts;
 	}
 
+	/**
+	 * 
+	 * @param file
+	 * @param lang
+	 * @param geo
+	 * @return
+	 */
+	private String getOcrText(File file, String lang, String geo) {
+		ReadImageText readImageText = new ReadImageText(props);
+		String text = readImageText.ocrText(file, lang, ImageGeometry.getGeometry(geo)).trim();
+		return removeSpecialChars(text);
+	}
+
+	/**
+	 * 
+	 * @param file
+	 * @param geometry
+	 * @return
+	 */
+	private long findLastPage(String file, String geometry) {
+		log.info("find last page {} - {}", file, geometry);
+		long lastPageNo = 0;
+		String pageNo = getOcrText(new File(file), LANGUAGE_ENGLISH, geometry);
+		try {
+			lastPageNo = Long.parseLong(pageNo);
+		} catch (NumberFormatException e) {
+			log.info("Teseeract didn't pull correct text for file {}", file);
+		}
+
+		return lastPageNo;
+	}
+
+	/**
+	 * 
+	 * @param config
+	 * @param file
+	 * @return
+	 */
+	private String firstPage(JsonConfigReader config, File file) {
+		StringBuffer sb = new StringBuffer();
+		sb.append("{\"firstPage\":{");
+		
+		LinkedHashMap<String, String> fp = config.getFirstPage();
+		fp.entrySet()
+		.parallelStream()
+		.parallel()
+		.forEach(entry -> {
+			sb.append("\"" + entry.getKey() + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), entry.getValue())
+			+ "\",");
+		});
+		
+		/*for (Map.Entry<String, String> fp : config.getFirstPage().entrySet()) {
+			sb.append("\"" + fp.getKey() + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), fp.getValue())
+					+ "\",");
+		}*/
+
+		if (config.getPollingCenter().size() > 0) {
+			sb.append("\"Polling Center\":{");
+			//int i = 1;
+			//LinkedHashMap<String, String> pc = config.getFirstPage();
+			fp.entrySet()
+			.parallelStream()
+			.parallel()
+			.forEach(entry -> {
+				String[] arr = entry.getValue().split("=");
+				String language = arr.length > 1 ? arr[1] : config.getDefaultTesseractLang();
+				sb.append("\"" + entry.getKey() + "\":\"" + getOcrText(file, language, arr[0]) + "\",");
+			});
+			
+			/*for (Map.Entry<String, String> pc : config.getPollingCenter().entrySet()) {
+				String[] arr = pc.getValue().split("=");
+				String language = arr.length > 1 ? arr[1] : config.getDefaultTesseractLang();
+				sb.append("\"" + pc.getKey() + "\":\"" + getOcrText(file, language, arr[0]) + "\"");
+				if (i != config.getPollingCenter().size()) {
+					sb.append(",");
+				}
+				i++;
+			}*/
+			sb.append("\"\":\"\"}");
+		}
+		sb.append("}},{");
+
+		JsonArray jarr = config.getFirstPageTable();
+		ExtractTableData tableData = new ExtractTableData();
+		
+		for (JsonElement ele : jarr) {
+			if (ele.isJsonObject() && tableData.isTableExist(ele)) {
+				sb.append("\"content\":[");
+				sb.append(tableData.fetchTableData(props, config, file, ele, "firstPage"));
+				sb.append("]");
+			}
+		}
+		sb.append("},");
+
+		return sb.toString();
+	}
+
+	private String lastPage(JsonConfigReader config, File file) {
+		StringBuffer sb = new StringBuffer();
+		JsonArray jarr = config.getLastPageDimentions();
+		ExtractTableData tableData = new ExtractTableData();
+
+		int r = 1;
+		for (JsonElement ele : jarr) {
+			if (ele.isJsonObject() && tableData.isTableExist(ele)) {
+				sb.append("{\"content\":[");
+				sb.append(tableData.fetchTableData(props, config, file, ele, "lastPage"));
+				sb.append("]}");
+			} else {
+				if (r == 1) {
+					sb.append("\"details\":{");
+					sb.append("\"" + r + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), ele.getAsString())
+							+ "\",");
+				} else {
+					sb.append("\"" + r + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), ele.getAsString())
+							+ "\"");
+					if (r != jarr.size()) {
+						sb.append(",");
+					}
+				}
+			}
+			r++;
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * 
+	 * @param config
+	 * @param file
+	 * @return
+	 */
+	private String getAddress(JsonConfigReader config, File file) {
+		return getOcrText(file, config.getDefaultTesseractLang(), config.getAddressDimentions());
+	}
+
+	/**
+	 * 
+	 * @param config
+	 * @param fileName
+	 * @param text
+	 * @param map
+	 * @return
+	 */
 	private LinkedHashMap<String, String> buildJson(JsonConfigReader config, String fileName, String text,
 			LinkedHashMap<String, String> map) {
 		if (fileName.contains("-0.png")) {
@@ -338,22 +501,6 @@ public class GenerateData {
 		return map;
 	}
 
-	private long checkNCorrectSrNo(String text, Map<String, Long> voterCountsMap) {
-		text = removeSpecialChars(text);
-		long num = 0;
-		try {
-			num = Integer.parseInt(text);
-			if (num != srNo) {
-				num = srNo;
-			}
-		} catch (NumberFormatException ex) {
-				num = srNo;
-		}
-		srNo++;
-		return num;
-	}
-
-	
 	/**
 	 * 
 	 * @param text
@@ -428,96 +575,62 @@ public class GenerateData {
 		return "Relative";
 	}
 
-	private long findLastPage(String file, String geometry) {
-		log.info("find last page {} - {}", file, geometry);
-		long lastPageNo = 0;
-		String pageNo = getOcrText(new File(file), LANGUAGE_ENGLISH, geometry);
+	/**
+	 * 
+	 * @param text
+	 * @param voterCountsMap
+	 * @return
+	 */
+	private long checkNCorrectSrNo(String text, Map<String, Long> voterCountsMap) {
+		text = removeSpecialChars(text);
+		long num = 0;
 		try {
-			lastPageNo = Long.parseLong(pageNo);
-		} catch (NumberFormatException e) {
-			log.info("Teseeract didn't pull correct text for file {}", file);
-		}
-
-		return lastPageNo;
-	}
-
-	private String getAddress(JsonConfigReader config, File file) {
-		return getOcrText(file, config.getDefaultTesseractLang(), config.getAddressDimentions());
-	}
-
-	private String firstPage(JsonConfigReader config, File file) {
-		StringBuffer sb = new StringBuffer();
-		sb.append("{\"firstPage\":{");
-		for (Map.Entry<String, String> fp : config.getFirstPage().entrySet()) {
-			sb.append("\"" + fp.getKey() + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), fp.getValue())
-					+ "\",");
-		}
-
-		if (config.getPollingCenter().size() > 0) {
-			sb.append("\"Polling Center\":{");
-			int i = 1;
-			for (Map.Entry<String, String> pc : config.getPollingCenter().entrySet()) {
-				String[] arr = pc.getValue().split("=");
-				String language = arr.length > 1 ? arr[1] : config.getDefaultTesseractLang();
-				sb.append("\"" + pc.getKey() + "\":\"" + getOcrText(file, language, arr[0]) + "\"");
-				if (i != config.getPollingCenter().size()) {
-					sb.append(",");
-				}
-				i++;
+			num = Integer.parseInt(text);
+			if (num != srNo) {
+				num = srNo;
 			}
-			sb.append("}");
+		} catch (NumberFormatException ex) {
+			num = srNo;
 		}
-		sb.append("}},{");
+		srNo++;
+		return num;
+	}
+	
+	/**
+	 * @param outputFilePath
+	 * @param config
+	 * @param f
+	 * @param firstNLastPage
+	 * @param jsonString
+	 */
+	private void gnerateJsonNcsvFiles(String outputFilePath, JsonConfigReader config, File f,
+			Map<String, String> firstNLastPage, String jsonString) {
+		File jFile = new File(outputFilePath + JSON_DIR + FilenameUtils.getBaseName(f.getName()) + ".json");
+		File csvFile = new File(outputFilePath + CSV_DIR + FilenameUtils.getBaseName(f.getName()) + ".csv");
+		File jbFile = new File(outputFilePath + JSON_DIR + FilenameUtils.getBaseName(f.getName()) + "-brief.json");
+		File csvbFile = new File(outputFilePath + CSV_DIR + FilenameUtils.getBaseName(f.getName()) + "-brief.csv");
 
-		JsonArray jarr = config.getFirstPageTable();
-		ExtractTableData tableData = new ExtractTableData();
-		for (JsonElement ele : jarr) {
-			if (ele.isJsonObject() && tableData.isTableExist(ele)) {
-				sb.append("\"content\":[");
-				sb.append(tableData.fetchTableData(props, config, file, ele, "firstPage"));
-				sb.append("]");
-			}
+		EaJsonToCsvFileWriter csvWriter = new EaJsonToCsvFileWriter();
+
+		try {
+			log.info("Write JSON file.");
+			FileUtils.writeStringToFile(jFile, jsonString, "UTF-8");
+
+			log.info("Write JSON to CSV file.");
+			csvWriter.writeCsv(config, jsonString, csvFile);
+
+			String briefJsonString = briefJsonStr(firstNLastPage);
+			log.info("Write Brief JSON file.");
+			FileUtils.writeStringToFile(jbFile, briefJsonString, "UTF-8");
+
+			log.info("Write Brief CSV file.");
+			csvWriter.writeCsv(config, briefJsonString, csvbFile);
+		} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException
+				| JSONException | IOException e) {
+			log.error(e.getMessage());
 		}
-		sb.append("},");
-
-		return sb.toString();
 	}
-
-	private String lastPage(JsonConfigReader config, File file) {
-		StringBuffer sb = new StringBuffer();
-		JsonArray jarr = config.getLastPageDimentions();
-		ExtractTableData tableData = new ExtractTableData();
-
-		int r = 1;
-		for (JsonElement ele : jarr) {
-			if (ele.isJsonObject() && tableData.isTableExist(ele)) {
-				sb.append("{\"content\":[");
-				sb.append(tableData.fetchTableData(props, config, file, ele, "lastPage"));
-				sb.append("]}");
-			} else {
-				if (r == 1) {
-					sb.append("\"details\":{");
-					sb.append("\"" + r + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), ele.getAsString())
-							+ "\",");
-				} else {
-					sb.append("\"" + r + "\":\"" + getOcrText(file, config.getDefaultTesseractLang(), ele.getAsString())
-							+ "\"");
-					if (r != jarr.size()) {
-						sb.append(",");
-					}
-				}
-			}
-			r++;
-		}
-		return sb.toString();
-	}
-
-	private String getOcrText(File file, String lang, String geo) {
-		ReadImageText readImageText = new ReadImageText(props);
-		String text = readImageText.ocrText(file, lang, ImageGeometry.getGeometry(geo)).trim();
-		return removeSpecialChars(text);
-	}
-
+	
 	/**
 	 * 
 	 * @param pdfFilePath

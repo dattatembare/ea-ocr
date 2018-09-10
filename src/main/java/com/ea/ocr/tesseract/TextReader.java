@@ -100,7 +100,7 @@ public class TextReader {
 			return true;
 		} else {
 			try {
-				log.info("Wait 5 seconds to generate file {}.", file.getAbsolutePath());
+				//log.info("Wait 5 seconds to generate file {}.", file.getAbsolutePath());
 				Thread.sleep(5000);
 			} catch (InterruptedException e) {
 				log.error(e.getMessage());

@@ -82,6 +82,7 @@ public class ThreadsToRunTools extends Thread {
 		File[] directories = fileOperations.directoryList(new File(pdfFilePath));
 		for (File d : directories) {
 			File[] pdfFiles = new File(d.getAbsolutePath()).listFiles(File::isFile);
+			int i = 0;
 			for (File f : pdfFiles) {
 				// Create output directory for GhostSCript
 				String dirName = FilenameUtils.getBaseName(d.getName());
@@ -90,6 +91,17 @@ public class ThreadsToRunTools extends Thread {
 				String imDirPath = outputFilePath + IM_DIR + dirName + "/" + fileName + "/";
 
 				executor.execute(new ProcessPdfImages(props, config, gsOutDir, imDirPath));
+				if (i == 5) {
+					try {
+						log.info("Sleep for 30 seconds");
+						Thread.sleep(30000);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					i = 0;
+				}
+				i++;
 			}
 		}
 
@@ -103,7 +115,7 @@ public class ThreadsToRunTools extends Thread {
 		for (File d : directories) {
 			File[] pdfFiles = new File(d.getAbsolutePath()).listFiles(File::isFile);
 			for (File pdfName : pdfFiles) {
-				executor.execute(new GenerateJsonNCsv(props, config, pdfName, outputFilePath, d.getName()));
+				executor.execute(new GenerateJsonNCsv(props, config, pdfName, d, outputFilePath));
 			}
 		}
 

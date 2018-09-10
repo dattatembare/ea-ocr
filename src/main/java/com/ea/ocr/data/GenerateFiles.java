@@ -6,7 +6,6 @@ package com.ea.ocr.data;
 import static com.ea.ocr.data.EaOcrConstants.*;
 import static com.ea.ocr.data.StringOperations.*;
 
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -17,8 +16,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.LongStream;
-
-import javax.imageio.ImageIO;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -89,18 +86,27 @@ public class GenerateFiles {
 				Map<String, Long> voterCountsMap = null;
 				long lastPageNo = 0;
 				long pngFilesLength = fileOperations.filesLength(gsOutDir);
+				
+				// Generate clean files
+				log.info("2. Crop page for voter details");
+				boolean isValidDimention = formatImagesObj.isValidDimention(config, gsOutDir + "/3.png");
+				String cropDirPath = outputFilePath + IM_DIR + FilenameUtils.getBaseName(d.getName()) + "/"
+						+ FilenameUtils.getBaseName(f.getName());
+				LongStream stream = LongStream.of(1, 2, 3, 4, 5, pngFilesLength);
+				stream.parallel()
+					.forEach(i -> generateCleanFiles(config, gsOutDir, cropDirPath, i, 5, isValidDimention));
 
 				if (config.getLastPageFinder().get(0).equals("scanFirstPage")) {
-					String inputFilepath = gsOutDir + "/1.png";
+					String inputFilepath = cropDirPath + "/1/clean-1.png";
 					voterCountsMap = voterCounts(config, new File(inputFilepath));
 					lastPageNo = pngFilesLength;
 				} else if (config.getLastPageFinder().get(0).equals("scanThirdPage")) {
-					String inputFilepath = gsOutDir + "/" + pngFilesLength + ".png";
+					String inputFilepath = cropDirPath + "/" + pngFilesLength + "/clean-" + pngFilesLength +".png";
 					voterCountsMap = voterCounts(config, new File(inputFilepath));
-					inputFilepath = gsOutDir + "/3.png";
+					inputFilepath = cropDirPath + "/3/clean-3.png";
 					lastPageNo = (long) findLastPage(inputFilepath, config.getLastPageFinder().get(1));
 				} else if (config.getLastPageFinder().get(0).equals("scanLastPage")) {
-					String inputFilepath = gsOutDir + "/" + pngFilesLength + ".png";
+					String inputFilepath = cropDirPath + "/" + pngFilesLength + "/clean-" + pngFilesLength +".png";
 					voterCountsMap = voterCounts(config, new File(inputFilepath));
 					// double records = voterCountsMap.get("I");
 					// lastPageNo = (long) Math.ceil(records / 30) + 2;
@@ -116,19 +122,9 @@ public class GenerateFiles {
 					lastPageNo = pngFilesLength - 5;
 				}
 				
-				long lpn = lastPageNo;
-				boolean isValidDimention = formatImagesObj.isValidDimention(config, gsOutDir + "/3.png");
-				
 				log.info("GS extracted files {}, last page number {}", pngFilesLength, lastPageNo);
-
-				String cropDirPath = outputFilePath + IM_DIR + FilenameUtils.getBaseName(d.getName()) + "/"
-						+ FilenameUtils.getBaseName(f.getName());
-				
-				// Generate clean files
-				log.info("2. Crop page for voter details");
-				LongStream.range(1, 6).parallel()
-				.forEach(i -> generateCleanFiles(config, gsOutDir, cropDirPath, i, lpn, isValidDimention));
-				LongStream.range(6, pngFilesLength + 1).parallel()
+				long lpn = lastPageNo;
+				LongStream.range(6, pngFilesLength).parallel()
 						.forEach(i -> generateCleanFiles(config, gsOutDir, cropDirPath, i, lpn, isValidDimention));
 				log.info("generateCleanFiles operation performed successfully!");
 				
@@ -190,6 +186,7 @@ public class GenerateFiles {
 				// Delete Files
 				try {
 					FileUtils.deleteDirectory(new File(gsOutDir));
+					FileUtils.deleteDirectory(new File(cropDirPath));
 				} catch (IOException e) {
 					log.error(e.getMessage());
 				}
@@ -389,7 +386,7 @@ public class GenerateFiles {
 		if (config.getPollingCenter().size() > 0) {
 			sb.append("\"Polling Center\":{");
 			//int i = 1;
-			LinkedHashMap<String, String> pc = config.getFirstPage();
+			//LinkedHashMap<String, String> pc = config.getFirstPage();
 			fp.entrySet()
 			.parallelStream()
 			.parallel()
@@ -600,20 +597,6 @@ public class GenerateFiles {
 		return num;
 	}
 	
-	/**
-	 * @param page
-	 * @return
-	 */
-	private BufferedImage bufferedImage(File cleanFile) {
-		BufferedImage inputImg = null;
-		try {
-			inputImg = ImageIO.read(cleanFile);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return inputImg;
-	}
-
 	/**
 	 * @param outputFilePath
 	 * @param config

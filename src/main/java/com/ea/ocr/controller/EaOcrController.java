@@ -45,7 +45,7 @@ public class EaOcrController {
 			@RequestParam("state") String state) {
 		String jsonFile = RESOURCES_PATH+state.toLowerCase()+".json";
 		log.info("Processing PDFs on path {} for {}", pdfFilePath, jsonFile);
-		generateData.generateJsonFile(pdfFilePath, outputFilePath, jsonFile);
+		generateData.execute(pdfFilePath, outputFilePath, jsonFile);
 		return "Success!";
 	}
 	

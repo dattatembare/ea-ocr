@@ -77,7 +77,7 @@ public class FileOperations {
 			return len;
 		} else {
 			try {
-				log.info("Wait 10 seconds to check files count.");
+				//log.info("Wait 10 seconds to check files count.");
 				Thread.sleep(10000);
 			} catch (InterruptedException e) {
 				log.error(e.getMessage());
